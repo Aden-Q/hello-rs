@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tag-release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.merge_commit_sha }}
+        fetch-depth: '0'
+
+    - name: Bump version and push tag
+      id: tag
+      uses: anothrNick/github-tag-action@1.71.0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        WITH_V: true
+
+    - name: Generate release changelog
+      uses: heinrichreimer/action-github-changelog-generator@v2.4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        onlyLastTag: true
+
+    - name: Create github release
+      if: ${{ success() }}
+      run: |
+        gh release create \
+          ${{ steps.tag.outputs.new_tag }} \
+          --title ${{ steps.tag.outputs.new_tag }} \
+          --notes-file CHANGELOG.md \
+          --target main
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Skip github release
+      if: ${{ failure() }}
+      run: echo "Skipping github release"
