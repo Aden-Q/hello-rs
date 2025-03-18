@@ -3,13 +3,17 @@ use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
 use std::{fs, thread};
 
+use hello_rs::ThreadPool;
+
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+
+    let thread_pool = ThreadPool::new(4);
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                thread::spawn(move || {
+                thread_pool.execute(move || {
                     handle_connection(stream);
                 });
             }
