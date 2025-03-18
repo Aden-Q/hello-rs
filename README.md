@@ -1,6 +1,6 @@
 # hello-rs
 
-A multithreaded implementation of web server in Rust
+A multithreaded web server implementation in Rust
 
 ## Usage
 
