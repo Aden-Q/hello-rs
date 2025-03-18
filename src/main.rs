@@ -19,9 +19,9 @@ fn main() {
             }
             Err(err) => eprintln!("Connection failed, {err}"),
         }
-
-        println!("Connection established");
     }
+
+    println!("Shutting down.");
 }
 
 fn handle_connection(mut stream: TcpStream) {

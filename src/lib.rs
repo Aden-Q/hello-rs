@@ -3,7 +3,7 @@ use std::thread;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    sender: Option<mpsc::Sender<Job>>,
 }
 
 impl ThreadPool {
@@ -15,8 +15,9 @@ impl ThreadPool {
     ///
     /// The `new` function will panic if the size is zero.
     pub fn new(size: usize) -> Self {
-        let (sender, receiver) = mpsc::channel();
+        assert!(size > 0);
 
+        let (sender, receiver) = mpsc::channel();
         let receiver = Arc::new(Mutex::new(receiver));
 
         let mut workers: Vec<Worker> = Vec::with_capacity(size);
@@ -26,7 +27,10 @@ impl ThreadPool {
             workers.push(Worker::new(id, Arc::clone(&receiver)));
         }
 
-        ThreadPool { workers, sender }
+        ThreadPool {
+            workers,
+            sender: Some(sender),
+        }
     }
 
     pub fn execute<F>(&self, f: F)
@@ -35,44 +39,53 @@ impl ThreadPool {
     {
         let job = Box::new(f);
 
-        self.sender.send(job).unwrap();
+        if let Some(sender) = &self.sender {
+            sender.send(job).unwrap();
+        }
     }
+}
 
-    pub fn wait(&self) {
-        for worker in &self.workers {
-            worker.join();
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        // to close the job channel
+        drop(self.sender.take());
+
+        for worker in &mut self.workers {
+            println!("Shutting down worker {}", worker.id);
+
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
+            }
         }
     }
 }
 
 struct Worker {
     id: usize,
-    thread: thread::JoinHandle<()>,
+    thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Self {
-        // 创建一个等待消息的阻塞线程attach到自身实例上并返回
+        // create a thread and block on the job channel
         let thread = thread::spawn(move || {
             loop {
-                let job = receiver.lock().unwrap().recv().unwrap();
-
-                println!("Worker {id} is executing a job");
-
-                job();
+                match receiver.lock().unwrap().recv() {
+                    Ok(job) => {
+                        println!("Worker {id} is executing a job");
+                        job();
+                    }
+                    Err(err) => {
+                        eprint!("Worker {id} has an issue; shutting down. {err}");
+                    }
+                }
             }
         });
 
-        Worker { id, thread }
-    }
-
-    fn join(&self) {
-        println!(
-            "Worker {} join main thread. Thread is finished? {}",
-            self.id,
-            self.thread.is_finished()
-        );
-        todo!()
+        Worker {
+            id,
+            thread: Some(thread),
+        }
     }
 }
 
